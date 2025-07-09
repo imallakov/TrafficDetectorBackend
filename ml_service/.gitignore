@@ -1,0 +1,16 @@
+model
+video
+output
+__test
+__test_model
+__test_video
+__test_output
+__test_region
+
+__pycache__
+.venv
+.idea
+
+traffic-stats.xlsx
+order-479.mp4
+regions.json

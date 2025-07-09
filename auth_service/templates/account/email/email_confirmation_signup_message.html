@@ -1,0 +1,26 @@
+{% load static %}
+{% load account %}
+{% load i18n %}
+{% autoescape off %}
+<center>
+    <h3>{{ site_name }}</h3>
+    <h4>Подтвердите Ваш Email ID</h4>
+    <p>
+        Подтверждаете? Нажмите на кнопку!
+    </p>
+    <a href="http://{{ current_site }}/auth/signup-verification/{{ key }}" 
+       target="_blank" 
+       rel="noopener noreferrer">
+        <button>Подтверждаю Email</button>
+    </a>
+    <footer>
+        <div>
+            <small>Спасибо</small>
+            <br/>
+            <small>{{ site_name }}</small>
+            <br/>
+            <small>http://{{ current_site }}</small>
+        </div>
+    </footer>
+</center>
+{% endautoescape %}

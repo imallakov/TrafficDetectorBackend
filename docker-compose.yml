@@ -1,0 +1,142 @@
+services:
+  # Databases
+  auth-db:
+    image: postgres:14-alpine  # Use alpine for smaller size
+    environment:
+      POSTGRES_DB: auth_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - auth-db-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  video-db:
+    image: postgres:14-alpine
+    environment:
+      POSTGRES_DB: video_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - video-db-data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+
+  stats-db:
+    image: postgres:14-alpine
+    environment:
+      POSTGRES_DB: stats_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - stats-db-data:/var/lib/postgresql/data
+    ports:
+      - "5434:5432"
+
+  # Kafka Infrastructure
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+  # Microservices
+  auth-service:
+    build:
+      context: ./auth_service
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8000"
+    environment:
+      - DB_NAME=auth_db
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_HOST=auth-db
+      - DB_PORT=5432
+      - SECRET_KEY=your-super-secret-key-for-auth
+      - DEBUG=True
+    depends_on:
+      - auth-db
+
+  video-service:
+    build:
+      context: ./video_service
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8000"
+    environment:
+      - DB_NAME=video_db
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_HOST=video-db
+      - DB_PORT=5432
+      - SECRET_KEY=your-super-secret-key-for-video
+      - DEBUG=True
+      - AUTH_SERVICE_URL=http://auth-service:8000
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - SHARED_STORAGE_PATH=/shared
+    depends_on:
+      - video-db
+      - kafka
+      - auth-service
+    volumes:
+      - shared-storage:/shared
+
+  ml-service:
+    build:
+      context: ./ml_service
+      dockerfile: Dockerfile
+    ports:
+      - "8003:8000"
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    depends_on:
+      - kafka
+    volumes:
+      - shared-storage:/shared
+      - ml-models:/app/models
+
+  statistics-service:
+    build:
+      context: ./statistics_service
+      dockerfile: Dockerfile
+    ports:
+      - "8004:8000"
+    environment:
+      - DATABASE_NAME=stats_db
+      - DATABASE_USER=postgres
+      - DATABASE_PASSWORD=postgres
+      - DATABASE_HOST=stats-db
+      - DATABASE_PORT=5432
+      - SECRET_KEY=your-super-secret-key-for-stats
+      - DEBUG=True
+      - AUTH_SERVICE_URL=http://auth-service:8000
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - SHARED_STORAGE_PATH=/shared
+    depends_on:
+      - stats-db
+      - kafka
+      - auth-service
+    volumes:
+      - shared-storage:/shared
+
+volumes:
+  auth-db-data:
+  video-db-data:
+  stats-db-data:
+  shared-storage:
+  ml-models:
