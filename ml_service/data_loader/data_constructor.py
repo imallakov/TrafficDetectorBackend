@@ -2,12 +2,11 @@ import cv2
 import tomllib
 import logging
 import numpy as np
-import json
 
-from data_loader.args_loader import load_args
-from data_loader.video_loader import open_video
-from data_loader.data_sector import DataSector
-from traffic_observer.sector_manager import SectorManager
+from data_loader.component.args_loader import load_args
+from data_loader.component.video_loader import open_video
+from data_loader.component.region_loader import load_json_region
+from traffic_observer.crossroad_manager import CrossroadManager
 
 class Settings:
     def __init__(self):
@@ -22,8 +21,7 @@ class Settings:
         self.vehicle_size_coeffs = toml_settings["vehicle-size-coeffs"]
 
 class DataConstructor:
-    def __init__(self):
-        video_path, model_path, output_path, report_path, sector_path = load_args()
+    def __init__(self, video_path, model_path, output_path, report_path, sector_path):
         self.__video_path = video_path
         self.__model_path = model_path
         self.__output_path = output_path
@@ -31,21 +29,31 @@ class DataConstructor:
         self.__sector_path = sector_path
         self.settings = Settings()
 
+    def from_args():
+        video_path, model_path, output_path, report_path, sector_path = load_args()
+        return DataConstructor(
+            video_path,
+            model_path,
+            output_path,
+            report_path,
+            sector_path
+        )
+
     def get_video(self) -> tuple[cv2.VideoCapture, cv2.VideoWriter]:
         cap, fps = open_video(self.__video_path)
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         output = cv2.VideoWriter(self.__output_path, fourcc, fps, (self.settings.target_width, self.settings.target_height))
         return cap, output
     
-    def get_sector_manager(self):
+    def get_crossroad_manager(self):
         temp_cap, fps = open_video(self.__video_path)
         video_width = int(temp_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        data_sectors = self.__load_sectors()
-        adapted_data_sectors = self.__adapt_sectors_points(data_sectors, video_width, self.settings.target_width)
 
-        temp_cap.release()
-        return SectorManager(
-            adapted_data_sectors,
+        directions, end_regions = self.get_adapted_regions(video_width, self.settings.target_width)
+
+        return CrossroadManager(
+            directions,
+            end_regions,
             self.settings.vehicle_classes,
             1/fps,
             self.settings.observation_time,
@@ -56,38 +64,39 @@ class DataConstructor:
     
     def get_output_paths(self) -> tuple[str, str]:
         return self.__report_path, self.__output_path
-
-    def __load_sectors(self) -> list[DataSector]:
-        with open(self.__sector_path, "r", encoding="utf-8") as file:
-            data = json.load(file)  
-
-        sectors = []
-        for sector in data["sectors"]:
-            sector_id = sector["sector_id"]
-            start_points = sector["region_start"]["coords"]
-            end_points = sector["region_end"]["coords"]
-            lanes_points = [lane["coords"] for lane in sector["lanes"]]
-            lanes_count = sector["lanes_count"]
-            sector_length = sector["sector_length"]
-            max_speed = sector["max_speed"]
-            
-            # Creating Sector object
-            sector_object = DataSector(sector_id, start_points, end_points, lanes_points, lanes_count, sector_length, max_speed)
-            sectors.append(sector_object)
-        
-        return sectors
     
-    def __adapt_sectors_points(self, data_sectors: list[DataSector], video_width, required_width) -> list[DataSector]:
-        # Адаптирует список точек региона к необходимому разрешению
-        adapted_sectors = data_sectors.copy()
-        coeff = video_width / required_width
+    def get_adapted_regions(self, video_width, target_width):
+        regions_data = load_json_region(self.__sector_path)
 
-        for sector in adapted_sectors:
-            sector.start_points = self.__adapt_resolution_points(sector.start_points, coeff)
-            sector.end_points = self.__adapt_resolution_points(sector.end_points, coeff)
-            sector.lanes_points = [self.__adapt_resolution_points(lane, coeff) for lane in sector.lanes_points]
+        # Process directions.
+        directions_processed = []
+        for direction in regions_data.get('directions', []):
+            adapted_direction = self.__adapt_list_points(direction, video_width, target_width)
+            directions_processed.append(adapted_direction)
         
-        return adapted_sectors
+        # Process end_region.
+        end_region_data = regions_data.get('end_region')
+        if end_region_data:
+            adapted_end_region = self.__adapt_list_points(end_region_data, video_width, target_width)
+        else:
+            adapted_end_region = None
+            logging.info("No end_region found in JSON.")
+
+        return [
+            directions_processed,
+            adapted_end_region
+        ]
+
+    
+    def __adapt_list_points(self, data_sectors: list[list[int]], video_width, required_width) -> list[list[int]]:
+        coeff = video_width / required_width
+        # This creates a new list with each point adapted
+        adapted_points = [
+            [self.__adapt_resolution_points(point, coeff) for point in points]
+            for points in data_sectors
+        ]
+        
+        return adapted_points
 
     def __adapt_resolution_points(self, points: list[int], coef) -> list[int]:
         # Преобразование к int, так как openCV не берет float

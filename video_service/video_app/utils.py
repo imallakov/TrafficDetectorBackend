@@ -55,38 +55,30 @@ def save_video_file(video_file, user_id):
         raise
 
 
-def create_sector_json(roi_data, user_id):
-    """Creates JSON file with sector coordinates for ML service"""
+def create_region_json(roi_data, user_id):
+    """
+    Creates JSON file with directions and end regions for ML service
+    The data is saved directly as received from frontend without transformation
+    """
     try:
-        # Convert ROI data to ML service format
-        sector_data = {
-            "sectors": [
-                {
-                    "sector_id": roi_data.get("sector_id", 1),
-                    "region_start": {"coords": roi_data["start_region"]},
-                    "region_end": {"coords": roi_data["end_region"]},
-                    "lanes": [{"coords": lane} for lane in roi_data["lanes"]],
-                    "lanes_count": roi_data["lanes_count"],
-                    "sector_length": roi_data["length_km"],
-                    "max_speed": roi_data["max_speed"]
-                }
-            ]
-        }
+        # Validate required fields
+        if 'directions' not in roi_data or 'end_region' not in roi_data:
+            raise ValueError("ROI data must contain 'directions' and 'end_region' fields")
 
-        # Save JSON file
-        json_dir = os.path.join(settings.SHARED_STORAGE_PATH, 'sectors')
+        # Save JSON file as-is (ML service expects this exact format)
+        json_dir = os.path.join(settings.SHARED_STORAGE_PATH, 'regions')
         os.makedirs(json_dir, exist_ok=True)
-        json_filename = f"sectors_{user_id}_{uuid.uuid4()}.json"
+        json_filename = f"regions_{user_id}_{uuid.uuid4()}.json"
         json_path = os.path.join(json_dir, json_filename)
 
         with open(json_path, 'w', encoding='utf-8') as f:
-            json.dump(sector_data, f, ensure_ascii=False, indent=2)
+            json.dump(roi_data, f, ensure_ascii=False, indent=2)
 
-        logger.info(f"Sector JSON created: {json_path}")
+        logger.info(f"Region JSON created: {json_path}")
         return json_path
 
     except Exception as e:
-        logger.error(f"Error creating sector JSON: {e}")
+        logger.error(f"Error creating region JSON: {e}")
         raise
 
 

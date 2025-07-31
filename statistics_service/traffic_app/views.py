@@ -1,41 +1,30 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from django.http import HttpResponse, Http404
-from django.conf import settings
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
-import os
-import mimetypes
+from django.db.models import Avg, Sum, Min, Max, Count, Q
+from django.utils import timezone
+from datetime import timedelta
 import logging
 
-from .models import TrafficData, VideoProcessingResult
-from .serializers import TrafficDataSerializer
+from .models import TrafficTask, DirectionStatistics
+from .serializers import (
+    TrafficTaskSerializer, TrafficTaskListSerializer,
+    DirectionStatisticsSerializer, DirectionSummarySerializer,
+    ErrorResponseSerializer
+)
 from .utils import validate_user_token
 
 logger = logging.getLogger(__name__)
 
 
-class UserTrafficDataView(APIView):
-    """Original endpoint - keep for backwards compatibility"""
+class TaskStatisticsView(APIView):
+    """Получение статистики по конкретной задаче"""
 
     @swagger_auto_schema(
-        operation_summary="Get user traffic data",
-        operation_description="Get legacy traffic data for a specific user",
-        responses={200: TrafficDataSerializer(many=True)}
-    )
-    def get(self, request, user_id):
-        traffic_data = TrafficData.objects.filter(user_id=user_id).order_by('-timestamp')
-        serializer = TrafficDataSerializer(traffic_data, many=True)
-        return Response(serializer.data)
-
-
-class UserVideoResultsView(APIView):
-    """Get all video processing results for authenticated user"""
-
-    @swagger_auto_schema(
-        operation_summary="Get user's video processing results",
-        operation_description="Retrieve all video processing results for the authenticated user",
+        operation_summary="Get task statistics",
+        operation_description="Retrieve traffic analysis statistics for a specific task",
         manual_parameters=[
             openapi.Parameter(
                 'Authorization',
@@ -46,90 +35,13 @@ class UserVideoResultsView(APIView):
             )
         ],
         responses={
-            200: openapi.Response(
-                description="List of video processing results",
-                examples={
-                    "application/json": {
-                        "results": [
-                            {
-                                "task_id": "uuid-here",
-                                "status": "completed",
-                                "created_at": "2024-01-01T10:00:00Z",
-                                "report_download_url": "/api/download/report/uuid-here/",
-                                "video_download_url": "/api/download/video/uuid-here/"
-                            }
-                        ]
-                    }
-                }
-            ),
-            401: openapi.Response(description="Unauthorized")
+            200: TrafficTaskSerializer,
+            401: ErrorResponseSerializer,
+            404: ErrorResponseSerializer
         }
     )
-    def get(self, request):
-        # Check authentication
-        auth_header = request.META.get('HTTP_AUTHORIZATION')
-        if not auth_header:
-            return Response({'error': 'Authorization header missing'},
-                            status=status.HTTP_401_UNAUTHORIZED)
-
-        auth_result = validate_user_token(auth_header)
-        if not auth_result.get('valid'):
-            return Response({'error': 'Invalid token'},
-                            status=status.HTTP_401_UNAUTHORIZED)
-
-        user_id = auth_result['user_id']
-
-        # Get user's video processing results
-        results = VideoProcessingResult.objects.filter(user_id=user_id).order_by('-created_at')
-
-        results_data = []
-        for result in results:
-            result_data = {
-                'task_id': str(result.task_id),
-                'status': result.status,
-                'created_at': result.created_at,
-                'updated_at': result.updated_at,
-                'error_message': result.error_message,
-            }
-
-            # Add download URLs if files exist
-            if result.status == 'completed':
-                if result.report_path:
-                    result_data['report_download_url'] = f'/api/download/report/{result.task_id}/'
-                if result.output_video_path:
-                    result_data['video_download_url'] = f'/api/download/video/{result.task_id}/'
-
-            results_data.append(result_data)
-
-        return Response({'results': results_data})
-
-
-class TaskResultView(APIView):
-    """Get specific task result by task_id"""
-
-    @swagger_auto_schema(
-        operation_summary="Get specific task result",
-        operation_description="Get video processing result for a specific task",
-        manual_parameters=[
-            openapi.Parameter(
-                'Authorization',
-                openapi.IN_HEADER,
-                description="Bearer JWT token",
-                type=openapi.TYPE_STRING,
-                required=True
-            ),
-            openapi.Parameter(
-                'task_id',
-                openapi.IN_PATH,
-                description="UUID of the task",
-                type=openapi.TYPE_STRING,
-                required=True
-            )
-        ],
-        responses={200: "Task result details", 401: "Unauthorized", 404: "Task not found"}
-    )
     def get(self, request, task_id):
-        # Check authentication
+        # Проверка авторизации
         auth_header = request.META.get('HTTP_AUTHORIZATION')
         if not auth_header:
             return Response({'error': 'Authorization header missing'},
@@ -143,35 +55,188 @@ class TaskResultView(APIView):
         user_id = auth_result['user_id']
 
         try:
-            result = VideoProcessingResult.objects.get(task_id=task_id, user_id=user_id)
+            task = TrafficTask.objects.prefetch_related('direction_stats').get(
+                task_id=task_id,
+                user_id=user_id
+            )
+            serializer = TrafficTaskSerializer(task)
+            return Response(serializer.data)
 
-            result_data = {
-                'task_id': str(result.task_id),
-                'status': result.status,
-                'created_at': result.created_at,
-                'updated_at': result.updated_at,
-                'error_message': result.error_message,
-            }
-
-            if result.status == 'completed':
-                if result.report_path:
-                    result_data['report_download_url'] = f'/api/download/report/{result.task_id}/'
-                if result.output_video_path:
-                    result_data['video_download_url'] = f'/api/download/video/{result.task_id}/'
-
-            return Response(result_data)
-
-        except VideoProcessingResult.DoesNotExist:
+        except TrafficTask.DoesNotExist:
             return Response({'error': 'Task not found'},
                             status=status.HTTP_404_NOT_FOUND)
 
 
+class UserTasksListView(APIView):
+    """Получение списка задач пользователя"""
+
+    @swagger_auto_schema(
+        operation_summary="Get user tasks",
+        operation_description="Retrieve all traffic analysis tasks for the authenticated user",
+        manual_parameters=[
+            openapi.Parameter(
+                'Authorization',
+                openapi.IN_HEADER,
+                description="Bearer JWT token",
+                type=openapi.TYPE_STRING,
+                required=True
+            ),
+            openapi.Parameter(
+                'status',
+                openapi.IN_QUERY,
+                description="Filter by status",
+                type=openapi.TYPE_STRING,
+                enum=['processing', 'completed', 'failed']
+            ),
+            openapi.Parameter(
+                'days',
+                openapi.IN_QUERY,
+                description="Filter by last N days",
+                type=openapi.TYPE_INTEGER
+            )
+        ],
+        responses={
+            200: TrafficTaskListSerializer(many=True),
+            401: ErrorResponseSerializer
+        }
+    )
+    def get(self, request):
+        # Проверка авторизации
+        auth_header = request.META.get('HTTP_AUTHORIZATION')
+        if not auth_header:
+            return Response({'error': 'Authorization header missing'},
+                            status=status.HTTP_401_UNAUTHORIZED)
+
+        auth_result = validate_user_token(auth_header)
+        if not auth_result.get('valid'):
+            return Response({'error': 'Invalid token'},
+                            status=status.HTTP_401_UNAUTHORIZED)
+
+        user_id = auth_result['user_id']
+
+        # Базовый queryset
+        tasks = TrafficTask.objects.filter(user_id=user_id)
+
+        # Фильтры
+        status_filter = request.query_params.get('status')
+        if status_filter:
+            tasks = tasks.filter(status=status_filter)
+
+        days_filter = request.query_params.get('days')
+        if days_filter:
+            try:
+                days = int(days_filter)
+                date_from = timezone.now() - timedelta(days=days)
+                tasks = tasks.filter(created_at__gte=date_from)
+            except ValueError:
+                pass
+
+        tasks = tasks.order_by('-created_at')
+        serializer = TrafficTaskListSerializer(tasks, many=True)
+
+        return Response({
+            'count': tasks.count(),
+            'tasks': serializer.data
+        })
+
+
+class DirectionSummaryView(APIView):
+    """Агрегированная статистика по направлениям"""
+
+    @swagger_auto_schema(
+        operation_summary="Get direction summary",
+        operation_description="Get aggregated statistics for traffic directions",
+        manual_parameters=[
+            openapi.Parameter(
+                'Authorization',
+                openapi.IN_HEADER,
+                description="Bearer JWT token",
+                type=openapi.TYPE_STRING,
+                required=True
+            ),
+            openapi.Parameter(
+                'task_ids',
+                openapi.IN_QUERY,
+                description="Comma-separated list of task IDs",
+                type=openapi.TYPE_STRING
+            ),
+            openapi.Parameter(
+                'start_direction',
+                openapi.IN_QUERY,
+                description="Filter by start direction",
+                type=openapi.TYPE_INTEGER
+            ),
+            openapi.Parameter(
+                'end_zone',
+                openapi.IN_QUERY,
+                description="Filter by end zone",
+                type=openapi.TYPE_INTEGER
+            )
+        ],
+        responses={
+            200: DirectionSummarySerializer(many=True),
+            401: ErrorResponseSerializer
+        }
+    )
+    def get(self, request):
+        # Проверка авторизации
+        auth_header = request.META.get('HTTP_AUTHORIZATION')
+        if not auth_header:
+            return Response({'error': 'Authorization header missing'},
+                            status=status.HTTP_401_UNAUTHORIZED)
+
+        auth_result = validate_user_token(auth_header)
+        if not auth_result.get('valid'):
+            return Response({'error': 'Invalid token'},
+                            status=status.HTTP_401_UNAUTHORIZED)
+
+        user_id = auth_result['user_id']
+
+        # Базовый queryset
+        stats = DirectionStatistics.objects.filter(
+            task__user_id=user_id,
+            task__status='completed'
+        )
+
+        # Фильтры
+        task_ids = request.query_params.get('task_ids')
+        if task_ids:
+            task_id_list = [tid.strip() for tid in task_ids.split(',')]
+            stats = stats.filter(task__task_id__in=task_id_list)
+
+        start_direction = request.query_params.get('start_direction')
+        if start_direction:
+            stats = stats.filter(start_direction=int(start_direction))
+
+        end_zone = request.query_params.get('end_zone')
+        if end_zone:
+            stats = stats.filter(end_zone=int(end_zone))
+
+        # Агрегация
+        summary = stats.values(
+            'start_direction', 'start_lane', 'end_zone'
+        ).annotate(
+            total_vehicles=Sum('vehicle_count'),
+            avg_start_delay=Avg('start_delay'),
+            avg_travel_time=Avg('travel_time'),
+            min_travel_time=Min('travel_time'),
+            max_travel_time=Max('travel_time')
+        ).filter(
+            total_vehicles__gt=0
+        ).order_by('start_direction', 'start_lane', 'end_zone')
+
+        return Response({
+            'count': summary.count(),
+            'summary': list(summary)
+        })
+
+
 class DownloadReportView(APIView):
-    """Download Excel report file"""
+    """Скачивание файла отчета"""
 
     @swagger_auto_schema(
-        operation_summary="Download Excel report",
-        operation_description="Download the Excel statistics report for a completed task",
+        operation_summary="Download report file",
+        operation_description="Download the original report file generated by ML service",
         manual_parameters=[
             openapi.Parameter(
                 'Authorization',
@@ -179,23 +244,16 @@ class DownloadReportView(APIView):
                 description="Bearer JWT token",
                 type=openapi.TYPE_STRING,
                 required=True
-            ),
-            openapi.Parameter(
-                'task_id',
-                openapi.IN_PATH,
-                description="UUID of the task",
-                type=openapi.TYPE_STRING,
-                required=True
             )
         ],
         responses={
-            200: openapi.Response(description="Excel file download"),
-            401: "Unauthorized",
-            404: "File not found"
+            200: openapi.Response('Report file'),
+            401: ErrorResponseSerializer,
+            404: ErrorResponseSerializer
         }
     )
     def get(self, request, task_id):
-        # Check authentication
+        # Проверка авторизации
         auth_header = request.META.get('HTTP_AUTHORIZATION')
         if not auth_header:
             return Response({'error': 'Authorization header missing'},
@@ -209,85 +267,33 @@ class DownloadReportView(APIView):
         user_id = auth_result['user_id']
 
         try:
-            result = VideoProcessingResult.objects.get(
+            task = TrafficTask.objects.get(
                 task_id=task_id,
                 user_id=user_id,
                 status='completed'
             )
 
-            if not result.report_path or not os.path.exists(result.report_path):
-                raise Http404("Report file not found")
+            if not task.report_file_path:
+                return Response({'error': 'Report file not available'},
+                                status=status.HTTP_404_NOT_FOUND)
 
-            # Serve the file
-            with open(result.report_path, 'rb') as f:
+            # Читаем файл и возвращаем его содержимое
+            import os
+            if os.path.exists(task.report_file_path):
+                with open(task.report_file_path, 'r') as f:
+                    report_data = f.read()
+
+                from django.http import HttpResponse
                 response = HttpResponse(
-                    f.read(),
-                    content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                    report_data,
+                    content_type='application/json'
                 )
-                response['Content-Disposition'] = f'attachment; filename="traffic_report_{task_id}.xlsx"'
+                response['Content-Disposition'] = f'attachment; filename="report_{task_id}.json"'
                 return response
+            else:
+                return Response({'error': 'Report file not found'},
+                                status=status.HTTP_404_NOT_FOUND)
 
-        except VideoProcessingResult.DoesNotExist:
-            raise Http404("Task not found")
-
-
-class DownloadVideoView(APIView):
-    """Download processed video file"""
-
-    @swagger_auto_schema(
-        operation_summary="Download processed video",
-        operation_description="Download the processed video file for a completed task",
-        manual_parameters=[
-            openapi.Parameter(
-                'Authorization',
-                openapi.IN_HEADER,
-                description="Bearer JWT token",
-                type=openapi.TYPE_STRING,
-                required=True
-            ),
-            openapi.Parameter(
-                'task_id',
-                openapi.IN_PATH,
-                description="UUID of the task",
-                type=openapi.TYPE_STRING,
-                required=True
-            )
-        ],
-        responses={
-            200: openapi.Response(description="Video file download"),
-            401: "Unauthorized",
-            404: "File not found"
-        }
-    )
-    def get(self, request, task_id):
-        # Check authentication
-        auth_header = request.META.get('HTTP_AUTHORIZATION')
-        if not auth_header:
-            return Response({'error': 'Authorization header missing'},
-                            status=status.HTTP_401_UNAUTHORIZED)
-
-        auth_result = validate_user_token(auth_header)
-        if not auth_result.get('valid'):
-            return Response({'error': 'Invalid token'},
-                            status=status.HTTP_401_UNAUTHORIZED)
-
-        user_id = auth_result['user_id']
-
-        try:
-            result = VideoProcessingResult.objects.get(
-                task_id=task_id,
-                user_id=user_id,
-                status='completed'
-            )
-
-            if not result.output_video_path or not os.path.exists(result.output_video_path):
-                raise Http404("Video file not found")
-
-            # Serve the file
-            with open(result.output_video_path, 'rb') as f:
-                response = HttpResponse(f.read(), content_type='video/mp4')
-                response['Content-Disposition'] = f'attachment; filename="processed_video_{task_id}.mp4"'
-                return response
-
-        except VideoProcessingResult.DoesNotExist:
-            raise Http404("Task not found")
+        except TrafficTask.DoesNotExist:
+            return Response({'error': 'Task not found'},
+                            status=status.HTTP_404_NOT_FOUND)

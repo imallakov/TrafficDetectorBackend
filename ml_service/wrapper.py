@@ -13,7 +13,7 @@ import uuid
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="ML Traffic Analysis Service", version="1.0.0")
+app = FastAPI(title="ML Traffic Analysis Service", version="2.0.0")
 
 # Kafka producer for sending results
 producer = KafkaProducer(
@@ -29,7 +29,7 @@ class ProcessingTask(BaseModel):
     task_id: str
     user_id: str
     video_path: str
-    sector_path: str
+    sector_path: str  # This now contains directions and end_regions
     output_path: str
     report_path: str
     model_path: str
@@ -47,8 +47,7 @@ async def process_video(
         background_tasks: BackgroundTasks
 ):
     """
-    Process video using the original AI code
-    This endpoint is mainly for direct API calls (if needed)
+    Process video using the updated AI code with directional detection
     """
     task_status[task.task_id] = {
         "status": "processing",
@@ -77,8 +76,7 @@ async def get_task_status(task_id: str):
 
 def run_ml_processing(task_data: dict):
     """
-    Run the original ML processing code as subprocess
-    This function wraps the existing main.py without modifying it
+    Run the updated ML processing code with directional_detector.py
     """
     task_id = task_data['task_id']
 
@@ -92,14 +90,14 @@ def run_ml_processing(task_data: dict):
             "message": "Initializing AI model"
         }
 
-        # Prepare command to run original main.py
+        # Prepare command to run the new directional_detector.py
         cmd = [
-            "python", "main.py",
+            "python", "directional_detector.py",
             "--video-path", task_data['video_path'],
             "--model-path", task_data['model_path'],
             "--output-path", task_data['output_path'],
             "--report-path", task_data['report_path'],
-            "--sector_path", task_data['sector_path']
+            "--sector_path", task_data['sector_path']  # Now contains directions/end_regions
         ]
 
         logger.info(f"Running command: {' '.join(cmd)}")
@@ -108,7 +106,7 @@ def run_ml_processing(task_data: dict):
         task_status[task_id]["progress"] = 20
         task_status[task_id]["message"] = "Processing video frames"
 
-        # Run the original AI processing
+        # Run the updated AI processing
         result = subprocess.run(
             cmd,
             capture_output=True,
@@ -126,6 +124,14 @@ def run_ml_processing(task_data: dict):
                 "message": "Processing completed successfully"
             }
 
+            # Read the generated report to include in Kafka message
+            report_data = None
+            try:
+                with open(task_data['report_path'], 'r') as f:
+                    report_data = json.load(f)
+            except Exception as e:
+                logger.warning(f"Could not read report file: {e}")
+
             # Send result to Kafka for statistics service
             result_data = {
                 "task_id": task_id,
@@ -133,6 +139,7 @@ def run_ml_processing(task_data: dict):
                 "status": "completed",
                 "output_path": task_data['output_path'],
                 "report_path": task_data['report_path'],
+                "report_data": report_data,  # Include the actual report data
                 "message": "Video processing completed successfully"
             }
 
@@ -191,7 +198,6 @@ def run_ml_processing(task_data: dict):
 def kafka_consumer_worker():
     """
     Kafka consumer that listens for video processing tasks
-    This runs in a separate thread
     """
     consumer = KafkaConsumer(
         'video_processing_tasks',

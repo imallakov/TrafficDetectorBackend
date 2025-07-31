@@ -2,30 +2,28 @@ from rest_framework import serializers
 from .models import VideoTask
 
 
-class ROIDataSerializer(serializers.Serializer):
-    """ROI (Region of Interest) data structure"""
-    sector_id = serializers.IntegerField(default=1, help_text="Unique sector identifier")
-    start_region = serializers.ListField(
-        child=serializers.ListField(child=serializers.IntegerField()),
-        help_text="Start region coordinates as array of [x,y] points"
+class DirectionROISerializer(serializers.Serializer):
+    """Structure for directional ROI data"""
+    directions = serializers.ListField(
+        child=serializers.ListField(
+            child=serializers.ListField(
+                child=serializers.ListField(child=serializers.IntegerField())
+            )
+        ),
+        help_text="Array of directions, each containing arrays of lane polygons"
     )
     end_region = serializers.ListField(
-        child=serializers.ListField(child=serializers.IntegerField()),
-        help_text="End region coordinates as array of [x,y] points"
+        child=serializers.ListField(
+            child=serializers.ListField(child=serializers.IntegerField())
+        ),
+        help_text="Array of end region polygons for each direction"
     )
-    lanes = serializers.ListField(
-        child=serializers.ListField(child=serializers.ListField(child=serializers.IntegerField())),
-        help_text="Array of lane coordinates, each lane is array of [x,y] points"
-    )
-    lanes_count = serializers.IntegerField(help_text="Number of lanes in the sector")
-    length_km = serializers.FloatField(help_text="Length of the sector in kilometers")
-    max_speed = serializers.IntegerField(help_text="Maximum speed limit in km/h")
 
 
 class VideoUploadSerializer(serializers.Serializer):
     """Video upload request structure"""
     video = serializers.FileField(help_text="Video file (MP4, AVI, MOV formats supported)")
-    roi_data = serializers.CharField(help_text="JSON string containing ROI data structure")
+    roi_data = serializers.CharField(help_text="JSON string containing directions and end_region data")
 
 
 class VideoUploadResponseSerializer(serializers.Serializer):

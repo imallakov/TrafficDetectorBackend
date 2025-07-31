@@ -8,11 +8,11 @@ import json
 import logging
 
 from .models import VideoTask
-from .utils import validate_user_token, save_video_file, create_sector_json, send_to_kafka
+from .utils import validate_user_token, save_video_file, create_region_json, send_to_kafka
 from .serializers import (
     VideoUploadSerializer, VideoUploadResponseSerializer,
     TaskStatusResponseSerializer, UserTasksResponseSerializer,
-    ErrorResponseSerializer, ROIDataSerializer
+    ErrorResponseSerializer, DirectionROISerializer
 )
 
 logger = logging.getLogger(__name__)
@@ -27,25 +27,44 @@ class VideoUploadView(APIView):
         Upload a video file along with ROI (Region of Interest) data for traffic analysis.
 
         The ROI data should be a JSON string containing:
-        - start_region: Coordinates of the starting detection area
-        - end_region: Coordinates of the ending detection area  
-        - lanes: Array of lane coordinates
-        - lanes_count: Number of lanes
-        - length_km: Sector length in kilometers
-        - max_speed: Speed limit in km/h
+        - directions: Array of directions, each containing arrays of lane polygons
+        - end_region: Array of end region polygons for each direction
 
         Example ROI data:
-        ```json
             {
-            "sector_id": 1,
-            "start_region": [[100,100], [200,100], [200,200], [100,200]],
-            "end_region": [[300,100], [400,100], [400,200], [300,200]],
-            "lanes": [[[150,100], [250,100], [250,200], [150,200]]],
-            "lanes_count": 1,
-            "length_km": 0.1,
-            "max_speed": 60
+                "directions": [
+                    [
+                        [[904, 1934], [1500, 1500], [1542, 1544], [938, 1988]],
+                        [[1538, 1546], [1580, 1598], [986, 2054], [940, 1994]],
+                        [[1580, 1604], [1634, 1664], [1030, 2128], [986, 2054]],
+                        [[1632, 1668], [1684, 1730], [1154, 2146], [1032, 2130]],
+                        [[1684, 1730], [1744, 1802], [1336, 2144], [1154, 2146]]
+                    ],
+                    [
+                        [[3210, 2058], [2582, 1448], [2640, 1404], [3268, 1996]],
+                        [[3272, 1994], [3316, 1946], [2710, 1354], [2642, 1408]],
+                        [[3320, 1944], [3386, 1862], [2782, 1296], [2712, 1356]]
+                    ],
+                    [
+                        [[2312, 584], [2858, 216], [2906, 288], [2378, 642]],
+                        [[2380, 642], [2912, 292], [2936, 310], [2416, 672]],
+                        [[2938, 312], [2980, 346], [2470, 714], [2416, 678]],
+                        [[2982, 348], [3030, 386], [2518, 756], [2468, 716]]
+                    ],
+                    [
+                        [[1386, 736], [1438, 696], [818, 10], [754, 46]],
+                        [[1446, 696], [1510, 666], [888, 2], [818, 10]],
+                        [[888, 0], [956, 0], [1564, 628], [1514, 666]],
+                        [[1564, 624], [1624, 604], [1038, 0], [962, 0]]
+                    ]
+                ],
+                "end_region": [
+                    [[1488, 438], [1616, 572], [1824, 452], [1714, 338]],
+                    [[2552, 798], [2810, 972], [2976, 886], [2700, 692]],
+                    [[2524, 1766], [2680, 1610], [2920, 1828], [2744, 1992]],
+                    [[1518, 1482], [1332, 1242], [1100, 1386], [1292, 1648]]
+                ]
             }
-        ```
         """,
         manual_parameters=[
             openapi.Parameter(
@@ -105,25 +124,42 @@ class VideoUploadView(APIView):
                             status=status.HTTP_400_BAD_REQUEST)
 
         # 3. Validate ROI data structure
-        required_fields = ['start_region', 'end_region', 'lanes', 'lanes_count', 'length_km', 'max_speed']
+        required_fields = ['directions', 'end_region']
         for field in required_fields:
             if field not in roi_data:
                 return Response({'error': f'Missing ROI field: {field}'},
                                 status=status.HTTP_400_BAD_REQUEST)
 
+        # Validate that directions is a list of lists of lists
+        if not isinstance(roi_data['directions'], list):
+            return Response({'error': 'directions must be an array'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate that end_region is a list of lists
+        if not isinstance(roi_data['end_region'], list):
+            return Response({'error': 'end_region must be an array'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate that number of end_regions matches number of directions
+        if len(roi_data['directions']) != len(roi_data['end_region']):
+            return Response({
+                'error': 'Number of directions must match number of end_regions',
+                'details': f"Found {len(roi_data['directions'])} directions and {len(roi_data['end_region'])} end_regions"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
         try:
             # 4. Save video file
             video_path = save_video_file(video_file, user_id)
 
-            # 5. Create sector JSON file
-            sector_json_path = create_sector_json(roi_data, user_id)
+            # 5. Create region JSON file
+            region_json_path = create_region_json(roi_data, user_id)
 
             # 6. Create database record
             video_task = VideoTask.objects.create(
                 user_id=user_id,
                 original_filename=video_file.name,
                 video_path=video_path,
-                sector_config=roi_data,
+                sector_config=roi_data,  # Now stores directions/end_regions
                 status='uploaded'
             )
 
@@ -132,10 +168,10 @@ class VideoUploadView(APIView):
                 "task_id": str(video_task.task_id),
                 "user_id": user_id,
                 "video_path": video_path,
-                "sector_path": sector_json_path,
+                "sector_path": region_json_path,  # Now points to regions JSON
                 "output_path": f"/shared/output/output_{user_id}_{video_task.task_id}.mp4",
-                "report_path": f"/shared/reports/report_{user_id}_{video_task.task_id}.xlsx",
-                "model_path": "/app/models/default-model.pt"
+                "report_path": f"/shared/reports/report_{user_id}_{video_task.task_id}.json",  # Changed to .json
+                "model_path": "/app/models/detector_yolov10s.pt"  # Updated model name
             }
 
             # 8. Send to Kafka
@@ -272,21 +308,43 @@ class UserTasksView(APIView):
 class ROISchemaView(APIView):
     @swagger_auto_schema(
         operation_summary="Get ROI data schema",
-        operation_description="Returns the expected structure for ROI (Region of Interest) data",
-        responses={200: ROIDataSerializer}
+        operation_description="Returns the expected structure for ROI (Region of Interest) data with directions",
+        responses={200: DirectionROISerializer}
     )
     def get(self, request):
-        """Returns example ROI data structure"""
+        """Returns example ROI data structure for directional detection"""
         example_roi = {
-            "sector_id": 1,
-            "start_region": [[100, 100], [200, 100], [200, 200], [100, 200]],
-            "end_region": [[300, 100], [400, 100], [400, 200], [300, 200]],
-            "lanes": [
-                [[150, 100], [250, 100], [250, 200], [150, 200]],
-                [[250, 100], [350, 100], [350, 200], [250, 200]]
+            "directions": [
+                [  # Direction 0 with 5 lanes
+                    [[904, 1934], [1500, 1500], [1542, 1544], [938, 1988]],
+                    [[1538, 1546], [1580, 1598], [986, 2054], [940, 1994]],
+                    [[1580, 1604], [1634, 1664], [1030, 2128], [986, 2054]],
+                    [[1632, 1668], [1684, 1730], [1154, 2146], [1032, 2130]],
+                    [[1684, 1730], [1744, 1802], [1336, 2144], [1154, 2146]]
+                ],
+                [  # Direction 1 with 3 lanes
+                    [[3210, 2058], [2582, 1448], [2640, 1404], [3268, 1996]],
+                    [[3272, 1994], [3316, 1946], [2710, 1354], [2642, 1408]],
+                    [[3320, 1944], [3386, 1862], [2782, 1296], [2712, 1356]]
+                ],
+                [  # Direction 2 with 4 lanes
+                    [[2312, 584], [2858, 216], [2906, 288], [2378, 642]],
+                    [[2380, 642], [2912, 292], [2936, 310], [2416, 672]],
+                    [[2938, 312], [2980, 346], [2470, 714], [2416, 678]],
+                    [[2982, 348], [3030, 386], [2518, 756], [2468, 716]]
+                ],
+                [  # Direction 3 with 4 lanes
+                    [[1386, 736], [1438, 696], [818, 10], [754, 46]],
+                    [[1446, 696], [1510, 666], [888, 2], [818, 10]],
+                    [[888, 0], [956, 0], [1564, 628], [1514, 666]],
+                    [[1564, 624], [1624, 604], [1038, 0], [962, 0]]
+                ]
             ],
-            "lanes_count": 2,
-            "length_km": 0.1,
-            "max_speed": 60
+            "end_region": [
+                [[1488, 438], [1616, 572], [1824, 452], [1714, 338]],  # End for direction 0
+                [[2552, 798], [2810, 972], [2976, 886], [2700, 692]],  # End for direction 1
+                [[2524, 1766], [2680, 1610], [2920, 1828], [2744, 1992]],  # End for direction 2
+                [[1518, 1482], [1332, 1242], [1100, 1386], [1292, 1648]]  # End for direction 3
+            ]
         }
         return Response(example_roi)
