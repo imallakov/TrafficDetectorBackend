@@ -15,12 +15,12 @@ from datetime import timedelta
 import os
 
 import environ
+
 env = environ.Env()
 environ.Env.read_env()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
@@ -32,7 +32,6 @@ SECRET_KEY = env('SECRET_KEY')
 DEBUG = env('DEBUG', default=True)
 
 ALLOWED_HOSTS = []
-
 
 # Application definition
 
@@ -56,9 +55,10 @@ INSTALLED_APPS = [
     'rest_framework.authtoken',
     'rest_framework_simplejwt',
     'drf_yasg',
+    'core',
 ]
 
-SITE_ID=1
+SITE_ID = 1
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -77,7 +77,7 @@ ROOT_URLCONF = 'core.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [BASE_DIR,"templates"],
+        'DIRS': [BASE_DIR, "templates"],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -91,21 +91,19 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'core.wsgi.application'
 
-
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME':     env('DB_NAME'),
-        'USER':     env('DB_USER'),
+        'NAME': env('DB_NAME'),
+        'USER': env('DB_USER'),
         'PASSWORD': env('DB_PASSWORD'),
-        'HOST':     env('DB_HOST'),
-        'PORT':     env('DB_PORT'),
+        'HOST': env('DB_HOST'),
+        'PORT': env('DB_PORT'),
     }
 }
-
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
@@ -125,7 +123,6 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
@@ -136,7 +133,6 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
 
 USE_TZ = True
-
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
@@ -158,6 +154,10 @@ AUTHENTICATION_BACKENDS = [
     'allauth.account.auth_backends.AuthenticationBackend',
 ]
 
+AUTH_USER_MODEL = 'core.CustomUser'
+
+ACCOUNT_USER_MODEL_USERNAME_FIELD = None  # No username in the model
+
 # EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 # EMAIL_USE_TLS = True
 # EMAIL_HOST = "smpt.gmail.com"
@@ -167,19 +167,19 @@ AUTHENTICATION_BACKENDS = [
 # DEFAULT_FROM_EMAIL = "user@example.com"
 
 REST_FRAMEWORK = {
-    "DEFAULT_PERMISSION_CLASSES":[
+    "DEFAULT_PERMISSION_CLASSES": [
         'rest_framework.permissions.IsAuthenticated'
     ],
-    "DEFAULT_AUTHENTICATION_CLASSES":[
+    "DEFAULT_AUTHENTICATION_CLASSES": [
         'rest_framework_simplejwt.authentication.JWTAuthentication'
     ],
 }
 
 REST_AUTH = {
-    "USE_JWT":True,
-    "JWT_AUTH_HTTPONLY":False,
-    "JWT_AUTH_COOKIE":'core-app-auth',
-    "JWT_AUTH_REFRESH_COOKIE":'core-refresh-token',
+    "USE_JWT": True,
+    "JWT_AUTH_HTTPONLY": False,
+    "JWT_AUTH_COOKIE": 'core-app-auth',
+    "JWT_AUTH_REFRESH_COOKIE": 'core-refresh-token',
 }
 
 SIMPLE_JWT = {
@@ -188,7 +188,7 @@ SIMPLE_JWT = {
 }
 
 SWAGGER_SETTINGS = {
-    "SECURITY_DEFINITIONS":{
-        "Bearer":{"type": "apiKey", "name":"Authorization", "in":"header"}
+    "SECURITY_DEFINITIONS": {
+        "Bearer": {"type": "apiKey", "name": "Authorization", "in": "header"}
     }
 }

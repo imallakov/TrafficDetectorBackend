@@ -20,6 +20,10 @@ COPY . .
 # Create static directory
 RUN mkdir -p /app/static
 
+# Copy entrypoint script and set permissions
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
 EXPOSE 8000
 
-CMD ["sh", "-c", "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"]
+ENTRYPOINT ["/app/entrypoint.sh"]
