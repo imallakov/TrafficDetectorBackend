@@ -1,0 +1,14 @@
+__pycache__
+.git
+.gitignore
+*.rar
+*.pyc
+__test/
+*.py
+__test/video/
+__test/model/
+__test/output/
+__test/region/
+ml_service_analysis.md
+requirements.txt
+
