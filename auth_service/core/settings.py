@@ -146,9 +146,6 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-ACCOUNT_LOGIN_METHODS = {'email'}
-ACCOUNT_SIGNUP_FIELDS = ['email*', 'password1*', 'password2*']
-
 AUTHENTICATION_BACKENDS = [
     'django.contrib.auth.backends.ModelBackend',
     'allauth.account.auth_backends.AuthenticationBackend',
@@ -156,7 +153,12 @@ AUTHENTICATION_BACKENDS = [
 
 AUTH_USER_MODEL = 'core.CustomUser'
 
-ACCOUNT_USER_MODEL_USERNAME_FIELD = None  # No username in the model
+# Allauth settings
+ACCOUNT_LOGIN_METHODS = {'email'}
+ACCOUNT_SIGNUP_FIELDS = ['email*', 'password1*', 'password2*']
+ACCOUNT_UNIQUE_EMAIL = True
+ACCOUNT_USER_MODEL_USERNAME_FIELD = None
+ACCOUNT_EMAIL_VERIFICATION = 'none'
 
 # EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 # EMAIL_USE_TLS = True
@@ -176,6 +178,9 @@ REST_FRAMEWORK = {
 }
 
 REST_AUTH = {
+    'REGISTER_SERIALIZER': 'core.serializers.EmailRegisterSerializer',
+    'LOGIN_SERIALIZER': 'core.serializers.EmailLoginSerializer',
+
     "USE_JWT": True,
     "JWT_AUTH_HTTPONLY": False,
     "JWT_AUTH_COOKIE": 'core-app-auth',

@@ -4,9 +4,12 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework_simplejwt.tokens import UntypedToken
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
-from django.contrib.auth.models import User
 import jwt
 from django.conf import settings
+
+from .models import CustomUser
+
+User = CustomUser
 
 
 @api_view(['POST'])
@@ -37,7 +40,6 @@ def validate_token(request):
         return Response({
             'valid': True,
             'user_id': user_id,
-            'username': user.username,
             'email': user.email
         })
 
