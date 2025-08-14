@@ -1,10 +1,11 @@
 ffmpeg==1.4
 numpy==2.2.1
-opencv_python==4.10.0.84
-pandas==2.2.3
-ultralytics==8.3.49
 openpyxl==3.1.5
 lap==0.5.12
 uvicorn==0.35.0
 fastapi==0.116.1
 kafka-python==2.2.15
+pandas==2.2.3
+#opencv_python-headless==49.10.0.84
+#opencv_python==4.10.0.84
+#ultralytics==8.3.49
