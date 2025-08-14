@@ -160,13 +160,13 @@ ACCOUNT_UNIQUE_EMAIL = True
 ACCOUNT_USER_MODEL_USERNAME_FIELD = None
 ACCOUNT_EMAIL_VERIFICATION = 'none'
 
-# EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 # EMAIL_USE_TLS = True
 # EMAIL_HOST = "smpt.gmail.com"
 # EMAIL_PORT = "587"
 # EMAIL_HOST_USER = "user@example.com"
 # EMAIL_HOST_PASSWORD = ""
-# DEFAULT_FROM_EMAIL = "user@example.com"
+DEFAULT_FROM_EMAIL = 'noreply@example.com'
 
 REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
