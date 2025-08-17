@@ -67,7 +67,7 @@ services:
       - DB_PASSWORD=postgres
       - DB_HOST=auth-db
       - DB_PORT=5432
-      - SECRET_KEY=your-super-secret-key-for-auth
+      - SECRET_KEY=3w0#i8n@g7u6mhb)rs$91q@@z70tj++)5^63pw#d&1wt$4gjcj
       - DEBUG=True
     depends_on:
       - auth-db
@@ -84,7 +84,7 @@ services:
       - DB_PASSWORD=postgres
       - DB_HOST=video-db
       - DB_PORT=5432
-      - SECRET_KEY=your-super-secret-key-for-video
+      - SECRET_KEY==!z&jstzc@**y*$_$paz0w271zlfe+w(22z44!j6_k-de=q0r9
       - DEBUG=True
       - AUTH_SERVICE_URL=http://auth-service:8000
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
@@ -122,7 +122,7 @@ services:
       - DATABASE_PASSWORD=postgres
       - DATABASE_HOST=stats-db
       - DATABASE_PORT=5432
-      - SECRET_KEY=your-super-secret-key-for-stats
+      - SECRET_KEY=bion&&55s_8%(op99@nt-l0pusob8#)4s&#nwcot$h1r$2x%7@
       - DEBUG=True
       - AUTH_SERVICE_URL=http://auth-service:8000
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
