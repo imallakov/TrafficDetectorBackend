@@ -18,41 +18,33 @@ from django.contrib import admin
 from django.urls import path, include
 
 from rest_framework import permissions
-from dj_rest_auth.views import PasswordResetView, PasswordResetConfirmView
 
-from drf_yasg.views import get_schema_view
-from drf_yasg import openapi
+from .views import validate_token, RegisterView, CustomTokenObtainPairView, CustomTokenRefreshView, LogoutView, \
+    PasswordResetRequestView, PasswordResetValidateOTPView, PasswordResetConfirmView, EmailVerificationRequestView, \
+    EmailVerificationConfirmView
 
-from .views import validate_token
-
-schema_view = get_schema_view(
-    openapi.Info(
-        title="API Docs.",
-        default_version="v1",
-        description="Lorem",
-    ),
-    public=True,
-    permission_classes=(permissions.AllowAny,),
+from drf_spectacular.views import (
+    SpectacularAPIView,  # OpenAPI schema (JSON)
+    SpectacularSwaggerView,  # Swagger UI
+    SpectacularRedocView,  # ReDoc
 )
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path("auth/", include("dj_rest_auth.urls")),
-    path("auth/registration/", include("dj_rest_auth.registration.urls")),
-    path("auth/password/reset/", PasswordResetView.as_view(), name="password_reset"),
-    path(
-        "auth/password/reset/confirm/<str:uidb64>/<str:token>",
-        PasswordResetConfirmView.as_view(),
-        name="password_reset_confirm",
-    ),
+    path("auth/register/", RegisterView.as_view(), name='register'),
+    path('auth/login/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('auth/refresh/', CustomTokenRefreshView.as_view(), name='token_refresh'),
+    path('auth/logout/', LogoutView.as_view(), name='logout'),
+    path('auth/password-reset/request/', PasswordResetRequestView.as_view(), name='password-reset-request'),
+    path('auth/password-reset/validate/', PasswordResetValidateOTPView.as_view(), name='password-reset-validate'),
+    path('auth/password-reset/confirm/', PasswordResetConfirmView.as_view(), name='password-reset-confirm'),
+
+    path('auth/email-verify/request/', EmailVerificationRequestView.as_view(), name='email-verification-request'),
+    path('auth/email-verify/confirm/', EmailVerificationConfirmView.as_view(), name='email-verification-confirm'),
+
     path("auth/validate-token/", validate_token, name="validate_token"),
-    path(
-        "swagger<format>/", schema_view.without_ui(cache_timeout=0), name="schema_json"
-    ),
-    path(
-        "swagger/",
-        schema_view.with_ui("swagger", cache_timeout=0),
-        name="schema-swagger-ui",
-    ),
-    path("redoc/", schema_view.with_ui("redoc", cache_timeout=0), name="schema_redoc"),
+
+    path(f'schema/', SpectacularAPIView.as_view(), name='schema'),
+    path(f'docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+    path(f'redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
 ]
