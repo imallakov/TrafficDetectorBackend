@@ -1,5 +1,9 @@
+from datetime import timedelta
+
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 from django.db import models
+from django.utils.timezone import now
+
 
 class CustomUserManager(BaseUserManager):
     def create_user(self, email, password=None, **extra_fields):
@@ -17,8 +21,10 @@ class CustomUserManager(BaseUserManager):
 
         return self.create_user(email, password, **extra_fields)
 
+
 class CustomUser(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
+    email_confirmed = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
 
@@ -29,3 +35,18 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.email
+
+
+def get_expiration_time():
+    return now() + timedelta(minutes=15)
+
+
+class OTP(models.Model):
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name="otps")
+    otp = models.CharField(max_length=6)
+    purpose = models.CharField(max_length=20, choices=[('reset', 'Password Reset'), ('verify', 'Email Verification')])
+    expiration_time = models.DateTimeField(default=get_expiration_time)
+    is_used = models.BooleanField(default=False)
+
+    def is_valid(self):
+        return now() < self.expiration_time and not self.is_used

@@ -33,6 +33,21 @@ DEBUG = env('DEBUG', default=True)
 
 ALLOWED_HOSTS = []
 
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_HEADERS = [
+    'Content-Type',
+    'Authorization',
+    'X-CSRFToken',
+]
+
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3500",
+]
+
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:3500",
+]
+
 # Application definition
 
 INSTALLED_APPS = [
@@ -43,24 +58,18 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django.contrib.sites',
-
-    'allauth',
-    'allauth.account',
-    'allauth.socialaccount',
-
-    'dj_rest_auth',
-    'dj_rest_auth.registration',
-
     'rest_framework',
-    'rest_framework.authtoken',
     'rest_framework_simplejwt',
-    'drf_yasg',
+    'rest_framework_simplejwt.token_blacklist',
+    'corsheaders',
+    'drf_spectacular',
     'core',
 ]
 
 SITE_ID = 1
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -68,8 +77,7 @@ MIDDLEWARE = [
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
-    'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'allauth.account.middleware.AccountMiddleware',
+    'django.middleware.clickjacking.XFrameOptionsMiddleware'
 ]
 
 ROOT_URLCONF = 'core.urls'
@@ -149,19 +157,7 @@ ACCOUNT_EMAIL_VERIFICATION = 'none'
 ACCOUNT_LOGIN_METHODS = {'email'}
 ACCOUNT_SIGNUP_FIELDS = ['email*', 'password1*', 'password2*']
 
-AUTHENTICATION_BACKENDS = [
-    'django.contrib.auth.backends.ModelBackend',
-    'allauth.account.auth_backends.AuthenticationBackend',
-]
-
 AUTH_USER_MODEL = 'core.CustomUser'
-
-# Allauth settings
-ACCOUNT_LOGIN_METHODS = {'email'}
-ACCOUNT_SIGNUP_FIELDS = ['email*', 'password1*', 'password2*']
-ACCOUNT_UNIQUE_EMAIL = True
-ACCOUNT_USER_MODEL_USERNAME_FIELD = None
-ACCOUNT_EMAIL_VERIFICATION = 'none'
 
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 # EMAIL_USE_TLS = True
@@ -173,26 +169,19 @@ DEFAULT_FROM_EMAIL = 'noreply@example.com'
 
 REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
-        'rest_framework.permissions.IsAuthenticated'
+        'rest_framework.permissions.AllowAny'
     ],
     "DEFAULT_AUTHENTICATION_CLASSES": [
         'rest_framework_simplejwt.authentication.JWTAuthentication'
     ],
-}
-
-REST_AUTH = {
-    'REGISTER_SERIALIZER': 'core.serializers.EmailRegisterSerializer',
-    'LOGIN_SERIALIZER': 'core.serializers.EmailLoginSerializer',
-
-    "USE_JWT": True,
-    "JWT_AUTH_HTTPONLY": False,
-    "JWT_AUTH_COOKIE": 'core-app-auth',
-    "JWT_AUTH_REFRESH_COOKIE": 'core-refresh-token',
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(days=30),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=90),
+    'ACCESS_TOKEN_LIFETIME': timedelta(hours=1),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
 }
 
 SWAGGER_SETTINGS = {
