@@ -12,18 +12,25 @@ logger = logging.getLogger(__name__)
 def validate_user_token(token):
     """Validates JWT token through Auth Service"""
     try:
+        logger.info(f"Validating token: {token[:20]}...")
+
         if token.startswith('Bearer '):
             token = token[7:]
 
+        logger.info(f"Sending request to auth service: {settings.AUTH_SERVICE_URL}/auth/validate-token/")
         response = requests.post(
             f"{settings.AUTH_SERVICE_URL}/auth/validate-token/",
             json={"token": token},
             timeout=5
         )
 
+        logger.info(f"Auth service response status: {response.status_code}")
         if response.status_code == 200:
-            return response.json()
+            result = response.json()
+            logger.info(f"Auth service response: {result}")
+            return result
         else:
+            logger.error(f"Auth service error: {response.status_code} - {response.text}")
             return {"valid": False, "error": "Invalid token"}
 
     except requests.RequestException as e:
