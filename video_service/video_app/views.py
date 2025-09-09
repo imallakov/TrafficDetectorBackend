@@ -171,7 +171,7 @@ class VideoUploadView(APIView):
                 "sector_path": region_json_path,  # Now points to regions JSON
                 "output_path": f"/shared/output/output_{user_id}_{video_task.task_id}.mp4",
                 "report_path": f"/shared/reports/report_{user_id}_{video_task.task_id}.json",  # Changed to .json
-                "model_path": "/app/models/detector_yolov10s.pt"  # Updated model name
+                "model_path": "/app/models/yolov10s.pt"  # Updated model name
             }
 
             # 8. Send to Kafka
