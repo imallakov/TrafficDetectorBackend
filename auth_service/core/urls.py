@@ -21,7 +21,7 @@ from rest_framework import permissions
 
 from .views import validate_token, RegisterView, CustomTokenObtainPairView, CustomTokenRefreshView, LogoutView, \
     PasswordResetRequestView, PasswordResetValidateOTPView, PasswordResetConfirmView, EmailVerificationRequestView, \
-    EmailVerificationConfirmView
+    EmailVerificationConfirmView, PasswordUpdateView, UserDetailView
 
 from drf_spectacular.views import (
     SpectacularAPIView,  # OpenAPI schema (JSON)
@@ -38,7 +38,8 @@ urlpatterns = [
     path('auth/password-reset/request/', PasswordResetRequestView.as_view(), name='password-reset-request'),
     path('auth/password-reset/validate/', PasswordResetValidateOTPView.as_view(), name='password-reset-validate'),
     path('auth/password-reset/confirm/', PasswordResetConfirmView.as_view(), name='password-reset-confirm'),
-
+    path('me/', UserDetailView.as_view(), name='user'),
+    path('me/password/', PasswordUpdateView.as_view(), name='password_update'),
     path('auth/email-verify/request/', EmailVerificationRequestView.as_view(), name='email-verification-request'),
     path('auth/email-verify/confirm/', EmailVerificationConfirmView.as_view(), name='email-verification-confirm'),
 

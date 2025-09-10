@@ -6,19 +6,22 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework_simplejwt.tokens import UntypedToken, RefreshToken
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError, NotAuthenticated
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework.views import APIView
 from rest_framework import serializers as drf_serializers
+from rest_framework.generics import UpdateAPIView, RetrieveUpdateAPIView
 import jwt
 from django.conf import settings
 from django.middleware.csrf import get_token
 from django.core.signing import Signer, BadSignature
 from django.contrib.auth.password_validation import validate_password
+from django.contrib.auth import get_user_model
 from drf_spectacular.utils import extend_schema, OpenApiResponse, inline_serializer
 
 from .models import CustomUser, OTP
-from .serializers import UserRegistrationSerializer, UserSerializer
+from .permissions import IsOwner
+from .serializers import UserRegistrationSerializer, UserSerializer, PasswordUpdateSerializer
 from .utils import generate_otp
 
 User = CustomUser
@@ -364,6 +367,7 @@ class PasswordResetConfirmView(APIView):
 
 class EmailVerificationRequestView(APIView):
     permission_classes = [IsAuthenticated]
+
     @extend_schema(
         request=EmailSerializer,
         responses={
@@ -395,6 +399,7 @@ class EmailVerificationRequestView(APIView):
 
 class EmailVerificationConfirmView(APIView):
     permission_classes = [IsAuthenticated]
+
     @extend_schema(
         request=EmailOTPSerializer,
         responses={
@@ -480,3 +485,33 @@ def validate_token(request):
         return Response({'valid': False, 'error': 'User not found'})
     except Exception as e:
         return Response({'valid': False, 'error': str(e)})
+
+
+class UserDetailView(RetrieveUpdateAPIView):
+    """
+    Handles retrieving and updating user details.
+    """
+    permission_classes = [IsOwner]
+    serializer_class = UserSerializer
+
+    def get_object(self):
+        user = self.request.user
+        if user.is_authenticated:
+            # # Allow admins users to access any user
+            # if user.is_staff and 'pk' in self.kwargs:
+            #     return get_user_model().objects.get(pk=self.kwargs['pk'])
+            # return only the authenticated user's object
+            return get_user_model().objects.get(pk=user.id)
+        else:
+            raise NotAuthenticated("User is not authenticated.")
+
+
+class PasswordUpdateView(UpdateAPIView):
+    """
+    Handles password updates for the authenticated user.
+    """
+    permission_classes = [IsAuthenticated]
+    serializer_class = PasswordUpdateSerializer
+
+    def get_object(self):
+        return self.request.user
