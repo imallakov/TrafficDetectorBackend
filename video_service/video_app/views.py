@@ -140,12 +140,12 @@ class VideoUploadView(APIView):
             return Response({'error': 'end_region must be an array'},
                             status=status.HTTP_400_BAD_REQUEST)
 
-        # Validate that number of end_regions matches number of directions
-        if len(roi_data['directions']) != len(roi_data['end_region']):
-            return Response({
-                'error': 'Number of directions must match number of end_regions',
-                'details': f"Found {len(roi_data['directions'])} directions and {len(roi_data['end_region'])} end_regions"
-            }, status=status.HTTP_400_BAD_REQUEST)
+        # # Validate that number of end_regions matches number of directions
+        # if len(roi_data['directions']) != len(roi_data['end_region']):
+        #     return Response({
+        #         'error': 'Number of directions must match number of end_regions',
+        #         'details': f"Found {len(roi_data['directions'])} directions and {len(roi_data['end_region'])} end_regions"
+        #     }, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             # 4. Save video file
