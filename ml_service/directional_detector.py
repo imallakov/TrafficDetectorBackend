@@ -46,14 +46,19 @@ def __run_detector(
         frame = cv2.resize(frame, (settings.target_width, settings.target_height))
         traffic_manager.update(frame)
 
-        # Показ текущего кадра
+        # Показ текущего кадра (отключается автоматически в headless-среде)
         if show_image:
-            cv2.imshow("frame", frame)
+            try:
+                cv2.imshow("frame", frame)
+            except cv2.error as e:
+                logging.warning("cv2.imshow недоступен в текущей среде, предпросмотр будет отключен. %s", e)
+                show_image = False
 
         output.write(frame)
 
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+        if show_image:
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
 
     report_path, output_path  = dataConstructor.get_output_paths()
 
@@ -63,7 +68,8 @@ def __run_detector(
     # Сохранение видеофайла
     cap.release()
     output.release()
-    cv2.destroyAllWindows()
+    if show_image:
+        cv2.destroyAllWindows()
 
     logging.info(f"Видеофайл сохранён в {output_path}")
 
@@ -89,4 +95,5 @@ def directional_detect(
     )
 
 if __name__ == "__main__":
-    __run_detector(use_args=True, show_image=True)
+    # В контейнере/сервере лучше не показывать окно предпросмотра
+    __run_detector(use_args=True, show_image=False)
