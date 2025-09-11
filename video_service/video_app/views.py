@@ -140,12 +140,12 @@ class VideoUploadView(APIView):
             return Response({'error': 'end_region must be an array'},
                             status=status.HTTP_400_BAD_REQUEST)
 
-        # Validate that number of end_regions matches number of directions
-        if len(roi_data['directions']) != len(roi_data['end_region']):
-            return Response({
-                'error': 'Number of directions must match number of end_regions',
-                'details': f"Found {len(roi_data['directions'])} directions and {len(roi_data['end_region'])} end_regions"
-            }, status=status.HTTP_400_BAD_REQUEST)
+        # # Validate that number of end_regions matches number of directions
+        # if len(roi_data['directions']) != len(roi_data['end_region']):
+        #     return Response({
+        #         'error': 'Number of directions must match number of end_regions',
+        #         'details': f"Found {len(roi_data['directions'])} directions and {len(roi_data['end_region'])} end_regions"
+        #     }, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             # 4. Save video file
@@ -171,7 +171,7 @@ class VideoUploadView(APIView):
                 "sector_path": region_json_path,  # Now points to regions JSON
                 "output_path": f"/shared/output/output_{user_id}_{video_task.task_id}.mp4",
                 "report_path": f"/shared/reports/report_{user_id}_{video_task.task_id}.json",  # Changed to .json
-                "model_path": "/app/models/detector_yolov10s.pt"  # Updated model name
+                "model_path": "/app/models/yolov10s.pt"  # Updated model name
             }
 
             # 8. Send to Kafka
