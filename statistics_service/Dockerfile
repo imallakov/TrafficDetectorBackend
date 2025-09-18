@@ -18,4 +18,4 @@ RUN mkdir -p /shared/output /shared/reports
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "python manage.py migrate && python manage.py runserver 0.0.0.0:8000 & python run_consumer.py"]
+CMD ["sh", "-c", "python manage.py makemigrations && python manage.py migrate && python manage.py runserver 0.0.0.0:8000 & python run_consumer.py"]

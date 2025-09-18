@@ -21,7 +21,10 @@ class MLResultsConsumer:
             value_deserializer=lambda m: json.loads(m.decode('utf-8')),
             group_id='statistics_service_group',
             auto_offset_reset='latest',
-            enable_auto_commit=True
+            enable_auto_commit=True,
+            session_timeout_ms=60000,
+            heartbeat_interval_ms=20000,
+            max_poll_interval_ms=300000  # 5 minutes
         )
 
     def start(self):
@@ -42,31 +45,40 @@ class MLResultsConsumer:
 
         logger.info(f"Processing result for task {task_id} with status {status}")
 
-        # Создаем или обновляем задачу
-        task, created = TrafficTask.objects.update_or_create(
-            task_id=task_id,
-            defaults={
-                'user_id': user_id,
-                'status': status,
-                'output_video_path': data.get('output_path', ''),
-                'report_file_path': data.get('report_path', ''),
-            }
-        )
+        if not task_id or not user_id:
+            logger.error(f"Invalid message data: missing task_id or user_id - {data}")
+            return
 
-        if status == 'completed':
-            task.completed_at = timezone.now()
-            task.save()
+        try:
+            # Создаем или обновляем задачу
+            task, created = TrafficTask.objects.update_or_create(
+                task_id=task_id,
+                defaults={
+                    'user_id': user_id,
+                    'status': status,
+                    'output_video_path': data.get('output_path', ''),
+                    'report_file_path': data.get('report_path', ''),
+                }
+            )
 
-            # Обрабатываем данные отчета
-            report_data = data.get('report_data')
-            if report_data:
-                self.process_report_data(task, report_data)
-            else:
-                logger.warning(f"No report data for task {task_id}")
+            if status == 'completed':
+                task.completed_at = timezone.now()
+                task.save()
 
-        elif status == 'failed':
-            task.error_message = data.get('error', 'Unknown error')
-            task.save()
+                # Обрабатываем данные отчета
+                report_data = data.get('report_data')
+                if report_data:
+                    self.process_report_data(task, report_data)
+                else:
+                    logger.warning(f"No report data for task {task_id}")
+
+            elif status == 'failed':
+                task.error_message = data.get('error', 'Unknown error')
+                task.save()
+                logger.warning(f"Task {task_id} failed: {task.error_message}")
+
+        except Exception as e:
+            logger.error(f"Error processing task {task_id}: {e}", exc_info=True)
 
     def process_report_data(self, task, report_data):
         """Обработка и сохранение данных отчета"""
@@ -77,20 +89,24 @@ class MLResultsConsumer:
 
         for key, routes in report_data.items():
             # Извлекаем end_id и метрику из ключа
-            match = re.match(r"$end: (\d+), '(\w+)'$", key)
-            if not match:
+            # Expected format: "(end: 0, 'start_delay')"
+            end_match = re.search(r"\(end:\s*(\d+),\s*'(\w+)'\)", key)
+            if not end_match:
+                logger.warning(f"Could not parse key format: {key}")
                 continue
 
-            end_id = int(match.group(1))
-            metric = match.group(2)
+            end_id = int(end_match.group(1))
+            metric = end_match.group(2)
 
             for route_key, value in routes.items():
                 if value is None:
                     continue
 
                 # Извлекаем direction и lane
-                route_match = re.match(r"$direction: (\d+), lane: (\d+)$", route_key)
+                # Expected format: "(direction: 0, lane: 1)"
+                route_match = re.search(r"\(direction:\s*(\d+),\s*lane:\s*(\d+)\)", route_key)
                 if not route_match:
+                    logger.warning(f"Could not parse route key format: {route_key}")
                     continue
 
                 direction_id = int(route_match.group(1))
@@ -119,12 +135,15 @@ class MLResultsConsumer:
                     stats_to_create.append(existing_stat)
 
                 # Обновляем метрику
-                if metric == 'start_delay':
-                    existing_stat.start_delay = float(value)
-                elif metric == 'travel_time':
-                    existing_stat.travel_time = float(value)
-                elif metric == 'vehicle_count':
-                    existing_stat.vehicle_count = int(value)
+                try:
+                    if metric == 'start_delay':
+                        existing_stat.start_delay = float(value)
+                    elif metric == 'travel_time':
+                        existing_stat.travel_time = float(value)
+                    elif metric == 'vehicle_count':
+                        existing_stat.vehicle_count = int(value)
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Could not convert value {value} for metric {metric}: {e}")
 
         # Удаляем старые записи статистики для этой задачи
         DirectionStatistics.objects.filter(task=task).delete()

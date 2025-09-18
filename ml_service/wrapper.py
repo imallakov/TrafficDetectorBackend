@@ -106,12 +106,13 @@ def run_ml_processing(task_data: dict):
         task_status[task_id]["progress"] = 20
         task_status[task_id]["message"] = "Processing video frames"
 
-        # Run the updated AI processing
+        # Run the updated AI processing with longer timeout
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
-            cwd='/app'  # Make sure we're in the right directory
+            cwd='/app',
+            timeout=3600  # 1 hour timeout
         )
 
         if result.returncode == 0:
@@ -171,6 +172,29 @@ def run_ml_processing(task_data: dict):
             producer.send('ml_results', result_data)
             producer.flush()
 
+    except subprocess.TimeoutExpired:
+        logger.error(f"ML processing timed out for task {task_id}")
+
+        # Update status with timeout error
+        task_status[task_id] = {
+            "status": "failed",
+            "progress": 0,
+            "message": "Processing timed out",
+            "error": "Processing took too long and was terminated"
+        }
+
+        # Send failure notification to Kafka
+        result_data = {
+            "task_id": task_id,
+            "user_id": task_data['user_id'],
+            "status": "failed",
+            "error": "Processing timed out",
+            "message": "Video processing timed out"
+        }
+
+        producer.send('ml_results', result_data)
+        producer.flush()
+
     except Exception as e:
         logger.error(f"Exception during ML processing for task {task_id}: {str(e)}")
 
@@ -204,7 +228,12 @@ def kafka_consumer_worker():
         bootstrap_servers=os.getenv('KAFKA_BOOTSTRAP_SERVERS', 'kafka:9092').split(','),
         value_deserializer=lambda m: json.loads(m.decode('utf-8')),
         group_id='ml_processing_group',
-        auto_offset_reset='latest'
+        auto_offset_reset='latest',
+        max_poll_interval_ms=7200000,  # 2 hours
+        session_timeout_ms=60000,  # 1 minute
+        heartbeat_interval_ms=20000,  # 20 seconds
+        enable_auto_commit=True,
+        auto_commit_interval_ms=5000  # 5 seconds
     )
 
     logger.info("Kafka consumer started, waiting for video processing tasks...")
